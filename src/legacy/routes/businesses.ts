@@ -1,0 +1,262 @@
+import { Router } from "express";
+import { db, businessRequests, businessesTable, ordersTable, ridersTable, users } from "../db";
+import { desc, eq, inArray, sql } from "drizzle-orm";
+
+const router = Router();
+
+function getBusinessStatus(business: any) {
+  if (!business.isApproved) return "pending";
+  return business.isActive ? "active" : "inactive";
+}
+
+function formatBusiness(business: any, owner?: any) {
+  return {
+    id: String(business.id),
+    userId: String(business.userId),
+    name: business.shopName,
+    ownerName: owner?.name ?? "Business Owner",
+    phone: business.shopPhone,
+    email: business.shopEmail,
+    address: business.shopAddress,
+    city: business.shopCity,
+    pincode: business.shopPincode,
+    description: business.description,
+    businessType: business.businessType,
+    status: getBusinessStatus(business),
+    plan: business.plan,
+    commissionRate: business.commissionRate ? Number(business.commissionRate) : undefined,
+    rating: business.rating ? Number(business.rating) : undefined,
+    totalOrders: business.totalOrders ?? 0,
+    joinedAt: business.createdAt?.toISOString(),
+  };
+}
+
+function formatBusinessRequest(request: any) {
+  return {
+    id: String(request.id),
+    requestId: String(request.id),
+    name: request.shopName,
+    ownerName: request.ownerName,
+    phone: request.ownerPhone,
+    email: request.ownerEmail,
+    address: request.shopAddress,
+    city: request.shopCity,
+    status: request.status === "approved" ? "active" : request.status === "rejected" ? "inactive" : "pending",
+    joinedAt: request.createdAt?.toISOString(),
+  };
+}
+
+function slugifyShopName(name: string, suffix: string) {
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "business";
+  return `${base}-${suffix.slice(0, 8)}`;
+}
+
+router.get("/businesses", async (req, res): Promise<void> => {
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 20;
+  const offset = (page - 1) * limit;
+  const status = req.query.status as string | undefined;
+
+  const allBusinesses = await db.select().from(businessesTable).orderBy(desc(businessesTable.createdAt));
+  const allRequests = await db.select().from(businessRequests).orderBy(desc(businessRequests.createdAt));
+  const ownerIds = [...new Set(allBusinesses.map((business) => business.userId))];
+  const owners = ownerIds.length > 0
+    ? await db.select().from(users).where(inArray(users.id, ownerIds as string[]))
+    : [];
+  const ownerMap = Object.fromEntries(owners.map((owner) => [owner.id, owner]));
+
+  const businessEntries = allBusinesses.map((business) => formatBusiness(business, ownerMap[business.userId]));
+  const pendingEntries = allRequests
+    .filter((request) => request.status !== "approved")
+    .map(formatBusinessRequest);
+  const combined = [...pendingEntries, ...businessEntries].sort((a, b) => {
+    const left = new Date(a.joinedAt ?? 0).getTime();
+    const right = new Date(b.joinedAt ?? 0).getTime();
+    return right - left;
+  });
+
+  const filteredBusinesses = status ? combined.filter((business) => business.status === status) : combined;
+
+  res.json({
+    businesses: filteredBusinesses.slice(offset, offset + limit),
+    total: filteredBusinesses.length,
+    page,
+    limit,
+  });
+});
+
+router.post("/businesses", async (req, res): Promise<void> => {
+  const { userId, shopName, contactPhone, contactEmail, shopAddress, shopCity, plan, commissionRate, isActive, isApproved } = req.body;
+  if (!userId || !shopName || !contactPhone || !shopAddress || !shopCity) {
+    res.status(400).json({ error: "Missing required fields" });
+    return;
+  }
+
+  const insertResult = await db.insert(businessesTable).values({
+    userId: String(userId),
+    shopName,
+    shopPhone: contactPhone,
+    shopEmail: contactEmail,
+    shopAddress,
+    shopCity,
+    plan: plan ?? "basic",
+    commissionRate: commissionRate != null ? String(commissionRate) : undefined,
+    isActive: isActive ?? true,
+    isApproved: isApproved ?? true,
+    approvedAt: isApproved === false ? undefined : new Date(),
+  }).returning();
+
+  const business = insertResult[0];
+  const [owner] = await db.select().from(users).where(eq(users.id, business.userId));
+  res.status(201).json(formatBusiness(business, owner));
+});
+
+router.get("/businesses/:id", async (req, res): Promise<void> => {
+  const id = req.params.id;
+  const [business] = await db.select().from(businessesTable).where(eq(businessesTable.id, id));
+  if (!business) {
+    const [request] = await db.select().from(businessRequests).where(eq(businessRequests.id, id));
+    if (!request) {
+      res.status(404).json({ error: "Business not found" });
+      return;
+    }
+
+    res.json(formatBusinessRequest(request));
+    return;
+  }
+
+  const [owner] = await db.select().from(users).where(eq(users.id, business.userId));
+  res.json(formatBusiness(business, owner));
+});
+
+router.patch("/businesses/:id", async (req, res): Promise<void> => {
+  const id = req.params.id;
+  const { shopName, name, phone, email, address, city, pincode, description, businessType, status, plan, commissionRate, isActive, isApproved } = req.body;
+  const updates: Record<string, unknown> = {};
+
+  if (shopName) updates.shopName = shopName;
+  if (name) updates.shopName = name;
+  if (phone !== undefined) updates.shopPhone = phone ? String(phone).trim() : null;
+  if (email !== undefined) updates.shopEmail = email ? String(email).trim() : null;
+  if (address !== undefined) updates.shopAddress = address ? String(address).trim() : null;
+  if (city !== undefined) updates.shopCity = city ? String(city).trim() : null;
+  if (pincode !== undefined) updates.shopPincode = pincode ? String(pincode).trim() : null;
+  if (description !== undefined) updates.description = description ? String(description).trim() : null;
+  if (businessType !== undefined) updates.businessType = businessType ? String(businessType).trim() : null;
+  if (plan) updates.plan = plan;
+  if (commissionRate !== undefined) updates.commissionRate = String(commissionRate);
+  if (isActive !== undefined) updates.isActive = Boolean(isActive);
+  if (isApproved !== undefined) updates.isApproved = Boolean(isApproved);
+
+  if (status === "active") {
+    updates.isActive = true;
+    updates.isApproved = true;
+    updates.approvedAt = new Date();
+  } else if (status === "pending") {
+    updates.isActive = false;
+    updates.isApproved = false;
+  } else if (status === "inactive" || status === "suspended") {
+    updates.isActive = false;
+  }
+
+  const updateResult = await db.update(businessesTable).set(updates).where(eq(businessesTable.id, id)).returning();
+  const business = updateResult[0];
+  if (!business) {
+    const [request] = await db.select().from(businessRequests).where(eq(businessRequests.id, id));
+    if (!request) {
+      res.status(404).json({ error: "Business not found" });
+      return;
+    }
+
+    if (status === "active") {
+      const [existingUser] = await db.select().from(users).where(eq(users.phone, request.ownerPhone));
+      let user = existingUser;
+      if (!user) {
+        const createdUsers = await db.insert(users).values({
+          name: request.ownerName,
+          phone: request.ownerPhone,
+          email: request.ownerEmail,
+          passwordHash: request.passwordHash,
+          role: "business",
+          address: request.shopAddress,
+          city: request.shopCity,
+          pincode: request.shopPincode,
+          isActive: true,
+          isVerified: true,
+        }).returning();
+        user = createdUsers[0];
+      }
+
+      const createdBusinesses = await db.insert(businessesTable).values({
+        userId: user.id,
+        requestId: request.id,
+        shopName: request.shopName,
+        shopSlug: slugifyShopName(request.shopName, String(user.id)),
+        shopPhone: request.shopPhone ?? request.ownerPhone,
+        shopEmail: request.shopEmail ?? request.ownerEmail,
+        shopAddress: request.shopAddress,
+        shopCity: request.shopCity,
+        shopPincode: request.shopPincode,
+        shopLat: request.shopLat,
+        shopLng: request.shopLng,
+        businessType: request.businessType,
+        plan: "basic",
+        commissionRate: "12",
+        isActive: true,
+        isApproved: true,
+        approvedAt: new Date(),
+      }).returning();
+      const createdBusiness = createdBusinesses[0];
+
+      await db.update(businessRequests).set({
+        status: "approved",
+        reviewedAt: new Date(),
+      }).where(eq(businessRequests.id, request.id));
+
+      res.json(formatBusiness(createdBusiness, user));
+      return;
+    }
+
+    await db.update(businessRequests).set({
+      status: status === "pending" ? "under_review" : "rejected",
+      reviewedAt: new Date(),
+      rejectionReason: status === "inactive" ? "Rejected by admin" : undefined,
+    }).where(eq(businessRequests.id, request.id));
+
+    const [updatedRequest] = await db.select().from(businessRequests).where(eq(businessRequests.id, request.id));
+    res.json(formatBusinessRequest(updatedRequest));
+    return;
+  }
+
+  const [owner] = await db.select().from(users).where(eq(users.id, business.userId));
+  res.json(formatBusiness(business, owner));
+});
+
+router.get("/businesses/:id/stats", async (req, res): Promise<void> => {
+  const id = req.params.id;
+  const today = new Date().toISOString().split("T")[0];
+  const orders = await db.select().from(ordersTable).where(eq(ordersTable.businessId, id));
+  const todayOrders = orders.filter((order) => order.createdAt.toISOString().startsWith(today));
+  const pendingPickups = orders.filter((order) => ["accepted", "requested"].includes(order.status)).length;
+
+  const riders = await db.select().from(ridersTable).where(eq(ridersTable.businessId, id));
+  const activeRiders = riders.filter((rider) => rider.isAvailable).length;
+
+  const revenueToday = todayOrders.reduce((sum, order) => sum + Number(order.totalAmount), 0);
+  const revenueThisMonth = orders
+    .filter((order) => new Date(order.createdAt).getMonth() === new Date().getMonth())
+    .reduce((sum, order) => sum + Number(order.totalAmount), 0);
+
+  res.json({
+    totalOrders: orders.length,
+    ordersToday: todayOrders.length,
+    revenueToday,
+    revenueThisMonth,
+    pendingPickups,
+    activeRiders,
+    averageRating: 4.5,
+    totalCustomers: new Set(orders.map((order) => order.customerId)).size,
+  });
+});
+
+export default router;

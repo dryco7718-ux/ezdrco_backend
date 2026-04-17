@@ -1,0 +1,78 @@
+import { pgTable, text, uuid, timestamp, numeric, integer, boolean, jsonb } from 'drizzle-orm/pg-core';
+
+export const businessesTable = pgTable('businesses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull(),
+  requestId: uuid('request_id'),
+  shopName: text('shop_name').notNull(),
+  shopSlug: text('shop_slug').unique(),
+  logoUrl: text('logo_url'),
+  coverImageUrl: text('cover_image_url'),
+  description: text('description'),
+  shopPhone: text('shop_phone'),
+  shopEmail: text('shop_email'),
+  shopAddress: text('shop_address').notNull(),
+  shopCity: text('shop_city').default('Narnaul'),
+  shopPincode: text('shop_pincode'),
+  shopLat: numeric('shop_lat', { precision: 10, scale: 7 }),
+  shopLng: numeric('shop_lng', { precision: 10, scale: 7 }),
+  businessType: text('business_type').default('both'),
+  operatingHours: jsonb('operating_hours'),
+  servicesOffered: text('services_offered').array(),
+  expressDeliveryAvailable: boolean('express_delivery_available').default(true),
+  freePickupAvailable: boolean('free_pickup_available').default(true),
+  minimumOrderAmount: numeric('minimum_order_amount', { precision: 10, scale: 2 }).default('0'),
+  deliveryCharge: numeric('delivery_charge', { precision: 8, scale: 2 }).default('30'),
+  expressDeliveryMultiplier: numeric('express_delivery_multiplier', { precision: 3, scale: 1 }).default('1.5'),
+  plan: text('plan').default('basic'),
+  commissionRate: numeric('commission_rate', { precision: 5, scale: 2 }).default('12'),
+  isActive: boolean('is_active').default(true),
+  isApproved: boolean('is_approved').default(true),
+  isVerified: boolean('is_verified').default(false),
+  rating: numeric('rating', { precision: 3, scale: 2 }).default('5'),
+  ratingCount: integer('rating_count').default(0),
+  totalOrders: integer('total_orders').default(0),
+  totalRevenue: numeric('total_revenue', { precision: 12, scale: 2 }).default('0'),
+  totalEarnings: numeric('total_earnings', { precision: 12, scale: 2 }).default('0'),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const businessRequests = pgTable('business_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ownerName: text('owner_name').notNull(),
+  ownerPhone: text('owner_phone').notNull(),
+  ownerEmail: text('owner_email'),
+  passwordHash: text('password_hash').notNull(),
+  shopName: text('shop_name').notNull(),
+  shopPhone: text('shop_phone'),
+  shopEmail: text('shop_email'),
+  shopAddress: text('shop_address').notNull(),
+  shopCity: text('shop_city').default('Narnaul'),
+  shopPincode: text('shop_pincode'),
+  shopLat: numeric('shop_lat', { precision: 10, scale: 7 }),
+  shopLng: numeric('shop_lng', { precision: 10, scale: 7 }),
+  businessType: text('business_type').default('laundry'),
+  gstNumber: text('gst_number'),
+  panNumber: text('pan_number'),
+  idProofUrl: text('id_proof_url'),
+  addressProofUrl: text('address_proof_url'),
+  shopPhotoUrl: text('shop_photo_url'),
+  status: text('status').default('pending'),
+  reviewedBy: uuid('reviewed_by'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  rejectionReason: text('rejection_reason'),
+  adminNotes: text('admin_notes'),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Business = typeof businessesTable.$inferSelect;
+export type NewBusiness = typeof businessesTable.$inferInsert;
+export type BusinessRequest = typeof businessRequests.$inferSelect;
+export type NewBusinessRequest = typeof businessRequests.$inferInsert;
+
+export const businesses = businessesTable;

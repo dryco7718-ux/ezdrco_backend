@@ -1,0 +1,50 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.riderAssignments = exports.ridersTable = void 0;
+const pg_core_1 = require("drizzle-orm/pg-core");
+exports.ridersTable = (0, pg_core_1.pgTable)('riders', {
+    id: (0, pg_core_1.uuid)('id').primaryKey().defaultRandom(),
+    userId: (0, pg_core_1.uuid)('user_id').notNull(),
+    name: (0, pg_core_1.text)('name').notNull(),
+    phone: (0, pg_core_1.text)('phone').notNull().unique(),
+    email: (0, pg_core_1.text)('email'),
+    idProofUrl: (0, pg_core_1.text)('id_proof_url'),
+    licenseUrl: (0, pg_core_1.text)('license_url'),
+    photoUrl: (0, pg_core_1.text)('photo_url'),
+    businessId: (0, pg_core_1.uuid)('business_id'),
+    isBusinessSpecific: (0, pg_core_1.boolean)('is_business_specific').default(false),
+    isActive: (0, pg_core_1.boolean)('is_active').default(true),
+    isVerified: (0, pg_core_1.boolean)('is_verified').default(false),
+    isAvailable: (0, pg_core_1.boolean)('is_available').default(true),
+    currentLat: (0, pg_core_1.numeric)('current_lat', { precision: 10, scale: 7 }),
+    currentLng: (0, pg_core_1.numeric)('current_lng', { precision: 10, scale: 7 }),
+    locationUpdatedAt: (0, pg_core_1.timestamp)('location_updated_at', { withTimezone: true }),
+    totalDeliveries: (0, pg_core_1.integer)('total_deliveries').default(0),
+    rating: (0, pg_core_1.numeric)('rating', { precision: 3, scale: 2 }).default('5'),
+    ratingCount: (0, pg_core_1.integer)('rating_count').default(0),
+    vehicleType: (0, pg_core_1.text)('vehicle_type').default('bike'),
+    vehicleNumber: (0, pg_core_1.text)('vehicle_number'),
+    createdAt: (0, pg_core_1.timestamp)('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: (0, pg_core_1.timestamp)('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+exports.riderAssignments = (0, pg_core_1.pgTable)('rider_assignments', {
+    id: (0, pg_core_1.uuid)('id').primaryKey().defaultRandom(),
+    orderId: (0, pg_core_1.uuid)('order_id').notNull(),
+    riderId: (0, pg_core_1.uuid)('rider_id').notNull(),
+    assignmentType: (0, pg_core_1.text)('assignment_type').notNull(),
+    status: (0, pg_core_1.text)('status').default('assigned'),
+    assignedAt: (0, pg_core_1.timestamp)('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+    acceptedAt: (0, pg_core_1.timestamp)('accepted_at', { withTimezone: true }),
+    startedAt: (0, pg_core_1.timestamp)('started_at', { withTimezone: true }),
+    completedAt: (0, pg_core_1.timestamp)('completed_at', { withTimezone: true }),
+    pickupOtp: (0, pg_core_1.text)('pickup_otp'),
+    deliveryOtp: (0, pg_core_1.text)('delivery_otp'),
+    pickupLat: (0, pg_core_1.numeric)('pickup_lat', { precision: 10, scale: 7 }),
+    pickupLng: (0, pg_core_1.numeric)('pickup_lng', { precision: 10, scale: 7 }),
+    deliveryLat: (0, pg_core_1.numeric)('delivery_lat', { precision: 10, scale: 7 }),
+    deliveryLng: (0, pg_core_1.numeric)('delivery_lng', { precision: 10, scale: 7 }),
+    riderEarnings: (0, pg_core_1.numeric)('rider_earnings', { precision: 8, scale: 2 }).default('0'),
+    notes: (0, pg_core_1.text)('notes'),
+    createdAt: (0, pg_core_1.timestamp)('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+//# sourceMappingURL=riders.js.map
