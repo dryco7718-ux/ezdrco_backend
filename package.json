@@ -4,7 +4,7 @@
   "description": "Ezdryco Laundry & Dry Cleaning Platform Backend",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.json --incremental false",
+    "build": "npx tsc -p tsconfig.json --incremental false",
     "start": "node -r ts-node/register -r tsconfig-paths/register src/main.ts",
     "start:dev": "node --watch -r ts-node/register -r tsconfig-paths/register src/main.ts",
     "start:debug": "node --inspect -r ts-node/register -r tsconfig-paths/register src/main.ts",
