@@ -119,14 +119,20 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = configService.get<number>('PORT') || 3000;
+  const host = configService.get<string>('HOST') || '0.0.0.0';
+  const railwayPublicDomain = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL;
+  const localBaseUrl = `http://localhost:${port}`;
+  const publicBaseUrl = railwayPublicDomain
+    ? `https://${railwayPublicDomain.replace(/^https?:\/\//, '')}`
+    : localBaseUrl;
 
   registerShutdownHandlers(app);
 
   try {
-    await app.listen(port);
+    await app.listen(port, host);
   } catch (error) {
     if (isPortInUseError(error)) {
-      console.warn(`Ezdryco backend is already running on http://localhost:${port}. Reuse the existing process instead of starting a second one.`);
+      console.warn(`Ezdryco backend is already running on ${localBaseUrl}. Reuse the existing process instead of starting a second one.`);
       await app.close();
       return;
     }
@@ -134,8 +140,9 @@ async function bootstrap() {
     throw error;
   }
 
-  console.log(`🚀 Ezdryco Backend running on: http://localhost:${port}`);
-  console.log(`📚 API Documentation: http://localhost:${port}/api/docs`);
+  console.log(`🚀 Ezdryco Backend listening on: ${host}:${port}`);
+  console.log(`🌐 Public URL: ${publicBaseUrl}`);
+  console.log(`📚 API Documentation: ${publicBaseUrl}/api/docs`);
 }
 
 bootstrap().catch((error) => {
