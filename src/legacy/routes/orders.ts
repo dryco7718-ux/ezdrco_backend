@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, orderItems, orderStatusHistory, ordersTable, ridersTable, users } from "../db";
+import { businessesTable, db, notificationsTable, orderItems, orderStatusHistory, ordersTable, ridersTable, users } from "../db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { asyncHandler } from "../lib/async-handler";
 
@@ -88,6 +88,11 @@ function formatOrder(order: any, items: any[] = [], customer?: any, rider?: any)
       phone: customer.phone,
       email: customer.email,
       role: customer.role,
+      address: customer.address,
+      city: customer.city,
+      pincode: customer.pincode,
+      lat: customer.lat ? Number(customer.lat) : undefined,
+      lng: customer.lng ? Number(customer.lng) : undefined,
     } : undefined,
     rider: rider ? {
       id: String(rider.id),
@@ -99,6 +104,24 @@ function formatOrder(order: any, items: any[] = [], customer?: any, rider?: any)
       rating: rider.rating ? Number(rider.rating) : undefined,
     } : undefined,
   };
+}
+
+async function createNotification(input: {
+  userId: string;
+  title: string;
+  message: string;
+  type?: string;
+  referenceType?: string;
+  referenceId?: string;
+}) {
+  await db.insert(notificationsTable).values({
+    userId: input.userId,
+    title: input.title,
+    message: input.message,
+    type: input.type ?? "system",
+    referenceType: input.referenceType,
+    referenceId: input.referenceId,
+  });
 }
 
 async function getOrderItemsMap(orderIds: string[]) {
@@ -225,6 +248,20 @@ router.post("/orders", asyncHandler(async (req, res): Promise<void> => {
     };
   }));
 
+  const [customer] = await db.select().from(users).where(eq(users.id, String(customerId)));
+  const [business] = await db.select().from(businessesTable).where(eq(businessesTable.id, String(businessId)));
+
+  if (business?.userId) {
+    await createNotification({
+      userId: String(business.userId),
+      title: "New order received",
+      message: `Order #${order.orderNumber} has been placed${customer?.name ? ` by ${customer.name}` : ""}.`,
+      type: "order",
+      referenceType: "order",
+      referenceId: String(order.id),
+    });
+  }
+
   res.status(201).json(formatOrder(order, items.map((item: any, index: number) => ({
     id: `new-${index}`,
     itemName: item.itemName ?? item.name,
@@ -282,6 +319,15 @@ router.patch("/orders/:id", asyncHandler(async (req, res): Promise<void> => {
       toStatus: normalizedStatus,
       notes: notes ?? undefined,
       changedByType: "business",
+    });
+
+    await createNotification({
+      userId: String(existingOrder.customerId),
+      title: "Order status updated",
+      message: `Your order #${existingOrder.orderNumber} is now ${normalizeOutgoingStatus(normalizedStatus).replace(/_/g, " ")}.`,
+      type: "status",
+      referenceType: "order",
+      referenceId: String(existingOrder.id),
     });
   }
 
