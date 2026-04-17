@@ -114,14 +114,21 @@ async function createNotification(input: {
   referenceType?: string;
   referenceId?: string;
 }) {
-  await db.insert(notificationsTable).values({
-    userId: input.userId,
-    title: input.title,
-    message: input.message,
-    type: input.type ?? "system",
-    referenceType: input.referenceType,
-    referenceId: input.referenceId,
-  });
+  // Notifications should never block order placement/status updates.
+  try {
+    if (!input.userId) return;
+
+    await db.insert(notificationsTable).values({
+      userId: input.userId,
+      title: input.title,
+      message: input.message,
+      type: input.type ?? "system",
+      referenceType: input.referenceType,
+      referenceId: input.referenceId,
+    });
+  } catch {
+    // Best-effort only. Ignore notification failures to keep order APIs reliable.
+  }
 }
 
 async function getOrderItemsMap(orderIds: string[]) {
