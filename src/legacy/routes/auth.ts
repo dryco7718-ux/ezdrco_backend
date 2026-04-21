@@ -1,4 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import jwt from "jsonwebtoken";
 import { Router } from "express";
 import { db, businessRequests, businessesTable, users } from "../db";
 import { eq } from "drizzle-orm";
@@ -52,8 +53,12 @@ router.post("/auth/verify-otp", async (req, res): Promise<void> => {
     user = insertResult[0];
   }
 
+  const secret = process.env.JWT_SECRET || "dev-jwt-secret";
+  const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
+  const token = jwt.sign({ sub: String(user.id), role: user.role }, secret, { expiresIn });
+
   res.json({
-    token: `mock-token-${user.id}`,
+    token,
     user: {
       id: String(user.id),
       name: user.name,
@@ -99,7 +104,7 @@ router.post("/auth/customers/register", async (req, res): Promise<void> => {
   const user = insertResult[0];
 
   res.status(201).json({
-    token: `session-${user.id}`,
+    token: jwt.sign({ sub: String(user.id), role: user.role }, process.env.JWT_SECRET || "dev-jwt-secret", { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }),
     user: {
       id: String(user.id),
       name: user.name,
@@ -126,7 +131,7 @@ router.post("/auth/customers/login", async (req, res): Promise<void> => {
   }
 
   res.json({
-    token: `session-${user.id}`,
+    token: jwt.sign({ sub: String(user.id), role: user.role }, process.env.JWT_SECRET || "dev-jwt-secret", { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }),
     user: {
       id: String(user.id),
       name: user.name,
@@ -228,7 +233,7 @@ router.post("/auth/businesses/login", async (req, res): Promise<void> => {
   }
 
   res.json({
-    token: `session-${user.id}`,
+    token: jwt.sign({ sub: String(user.id), role: user.role }, process.env.JWT_SECRET || "dev-jwt-secret", { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }),
     user: {
       id: String(user.id),
       name: user.name,
