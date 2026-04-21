@@ -16,6 +16,7 @@ import mockRouter from "./mock";
 import { pool } from "../db";
 import { logger } from "../lib/logger";
 import { asyncHandler } from "../lib/async-handler";
+import { jwtPopulate } from "../lib/jwt-middleware";
 
 const router: IRouter = Router();
 let schemaReady: Promise<boolean> | null = null;
@@ -46,6 +47,8 @@ router.use(asyncHandler(async (req, res, next) => {
   next();
 }));
 router.use(authRouter);
+// Populate `req.auth` from JWT when provided (non-enforcing)
+router.use(jwtPopulate);
 router.use(analyticsRouter);
 router.use(customersRouter);
 router.use(ordersRouter);

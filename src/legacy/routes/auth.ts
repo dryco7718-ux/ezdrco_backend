@@ -254,4 +254,27 @@ router.post("/auth/businesses/login", async (req, res): Promise<void> => {
   });
 });
 
+router.get("/auth/me", async (req, res): Promise<void> => {
+  const auth = (req as any).auth;
+  if (!auth || !auth.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const [user] = await db.select().from(users).where(eq(users.id, auth.userId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  res.json({
+    id: String(user.id),
+    name: user.name,
+    phone: user.phone,
+    email: user.email,
+    role: user.role,
+  });
+});
+
 export default router;
+
