@@ -89,7 +89,7 @@ router.get("/analytics/order-stats", async (req, res) => {
     }
     const orderIds = orders.map((order) => order.id);
     const itemRows = orderIds.length > 0
-        ? await db_1.db.select().from(db_1.orderItems).where((0, drizzle_orm_1.sql) `${db_1.orderItems.orderId} = ANY(${orderIds})`)
+        ? await db_1.db.select().from(db_1.orderItems).where((0, drizzle_orm_1.inArray)(db_1.orderItems.orderId, orderIds))
         : [];
     const itemsByOrderId = itemRows.reduce((acc, item) => {
         const key = String(item.orderId);

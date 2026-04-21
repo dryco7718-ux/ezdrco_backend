@@ -19,6 +19,9 @@ function formatBusiness(business, owner) {
         email: business.shopEmail,
         address: business.shopAddress,
         city: business.shopCity,
+        pincode: business.shopPincode,
+        description: business.description,
+        businessType: business.businessType,
         status: getBusinessStatus(business),
         plan: business.plan,
         commissionRate: business.commissionRate ? Number(business.commissionRate) : undefined,
@@ -114,10 +117,26 @@ router.get("/businesses/:id", async (req, res) => {
 });
 router.patch("/businesses/:id", async (req, res) => {
     const id = req.params.id;
-    const { shopName, status, plan, commissionRate, isActive, isApproved } = req.body;
+    const { shopName, name, phone, email, address, city, pincode, description, businessType, status, plan, commissionRate, isActive, isApproved } = req.body;
     const updates = {};
     if (shopName)
         updates.shopName = shopName;
+    if (name)
+        updates.shopName = name;
+    if (phone !== undefined)
+        updates.shopPhone = phone ? String(phone).trim() : null;
+    if (email !== undefined)
+        updates.shopEmail = email ? String(email).trim() : null;
+    if (address !== undefined)
+        updates.shopAddress = address ? String(address).trim() : null;
+    if (city !== undefined)
+        updates.shopCity = city ? String(city).trim() : null;
+    if (pincode !== undefined)
+        updates.shopPincode = pincode ? String(pincode).trim() : null;
+    if (description !== undefined)
+        updates.description = description ? String(description).trim() : null;
+    if (businessType !== undefined)
+        updates.businessType = businessType ? String(businessType).trim() : null;
     if (plan)
         updates.plan = plan;
     if (commissionRate !== undefined)

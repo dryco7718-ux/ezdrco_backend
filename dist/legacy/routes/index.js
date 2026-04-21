@@ -19,6 +19,8 @@ const riders_1 = __importDefault(require("./riders"));
 const subscriptions_1 = __importDefault(require("./subscriptions"));
 const mock_1 = __importDefault(require("./mock"));
 const db_1 = require("../db");
+const logger_1 = require("../lib/logger");
+const async_handler_1 = require("../lib/async-handler");
 const router = (0, express_1.Router)();
 let schemaReady = null;
 async function hasDatabaseSchema() {
@@ -37,14 +39,14 @@ function getSchemaReady() {
     return schemaReady;
 }
 router.use(health_1.default);
-router.use(async (req, res, next) => {
+router.use((0, async_handler_1.asyncHandler)(async (req, res, next) => {
     const ready = await getSchemaReady();
     if (!ready) {
         (0, mock_1.default)(req, res, next);
         return;
     }
     next();
-});
+}));
 router.use(auth_1.default);
 router.use(analytics_1.default);
 router.use(customers_1.default);
@@ -57,5 +59,18 @@ router.use(payments_1.default);
 router.use(reviews_1.default);
 router.use(riders_1.default);
 router.use(subscriptions_1.default);
+const legacyErrorHandler = (error, req, res, next) => {
+    logger_1.logger.error({
+        err: error,
+        method: req.method,
+        path: req.originalUrl,
+    }, "Legacy API request failed");
+    if (res.headersSent) {
+        next(error);
+        return;
+    }
+    res.status(500).json({ error: "Internal server error" });
+};
+router.use(legacyErrorHandler);
 exports.default = router;
 //# sourceMappingURL=index.js.map

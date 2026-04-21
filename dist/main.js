@@ -44,6 +44,33 @@ const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const express_1 = __importDefault(require("express"));
 const app_module_1 = require("./app.module");
 const http_exception_filter_1 = require("./common/filters/http-exception.filter");
+function isPortInUseError(error) {
+    return Boolean(error && typeof error === 'object' && 'code' in error && error.code === 'EADDRINUSE');
+}
+function registerShutdownHandlers(app) {
+    let shuttingDown = false;
+    const shutdown = async (signal) => {
+        if (shuttingDown) {
+            return;
+        }
+        shuttingDown = true;
+        try {
+            console.log(`Received ${signal}. Shutting down Ezdryco backend...`);
+            await app.close();
+            process.exit(0);
+        }
+        catch (error) {
+            console.error('Failed to shut down backend cleanly.', error);
+            process.exit(1);
+        }
+    };
+    process.once('SIGINT', () => {
+        void shutdown('SIGINT');
+    });
+    process.once('SIGTERM', () => {
+        void shutdown('SIGTERM');
+    });
+}
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule, {
         logger: ['error', 'warn', 'log', 'debug', 'verbose'],
@@ -101,9 +128,30 @@ async function bootstrap() {
     const document = swagger_1.SwaggerModule.createDocument(app, swaggerConfig);
     swagger_1.SwaggerModule.setup('api/docs', app, document);
     const port = configService.get('PORT') || 3000;
-    await app.listen(port);
-    console.log(`🚀 Ezdryco Backend running on: http://localhost:${port}`);
-    console.log(`📚 API Documentation: http://localhost:${port}/api/docs`);
+    const host = configService.get('HOST') || '0.0.0.0';
+    const railwayPublicDomain = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL;
+    const localBaseUrl = `http://localhost:${port}`;
+    const publicBaseUrl = railwayPublicDomain
+        ? `https://${railwayPublicDomain.replace(/^https?:\/\//, '')}`
+        : localBaseUrl;
+    registerShutdownHandlers(app);
+    try {
+        await app.listen(port, host);
+    }
+    catch (error) {
+        if (isPortInUseError(error)) {
+            console.warn(`Ezdryco backend is already running on ${localBaseUrl}. Reuse the existing process instead of starting a second one.`);
+            await app.close();
+            return;
+        }
+        throw error;
+    }
+    console.log(`🚀 Ezdryco Backend listening on: ${host}:${port}`);
+    console.log(`🌐 Public URL: ${publicBaseUrl}`);
+    console.log(`📚 API Documentation: ${publicBaseUrl}/api/docs`);
 }
-bootstrap();
+bootstrap().catch((error) => {
+    console.error('Failed to start Ezdryco backend.', error);
+    process.exit(1);
+});
 //# sourceMappingURL=main.js.map

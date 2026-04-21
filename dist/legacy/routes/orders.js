@@ -3,7 +3,20 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../db");
 const drizzle_orm_1 = require("drizzle-orm");
+const async_handler_1 = require("../lib/async-handler");
 const router = (0, express_1.Router)();
+const STATUS_READ_ALIASES = {
+    processing: "cleaning",
+};
+const STATUS_WRITE_ALIASES = {
+    cleaning: "processing",
+};
+function normalizeIncomingStatus(status) {
+    return STATUS_WRITE_ALIASES[status] ?? status;
+}
+function normalizeOutgoingStatus(status) {
+    return STATUS_READ_ALIASES[status] ?? status;
+}
 function getStatusTimestampUpdate(status) {
     switch (status) {
         case "accepted":
@@ -41,11 +54,12 @@ function serializeOrderItem(item) {
     };
 }
 function formatOrder(order, items = [], customer, rider) {
+    const normalizedStatus = normalizeOutgoingStatus(order.status);
     return {
         id: String(order.id),
         customerId: String(order.customerId),
         businessId: String(order.businessId),
-        status: order.status,
+        status: normalizedStatus,
         items,
         subtotal: Number(order.subtotal ?? 0),
         deliveryCharge: Number(order.deliveryCharge ?? 0),
@@ -68,6 +82,11 @@ function formatOrder(order, items = [], customer, rider) {
             phone: customer.phone,
             email: customer.email,
             role: customer.role,
+            address: customer.address,
+            city: customer.city,
+            pincode: customer.pincode,
+            lat: customer.lat ? Number(customer.lat) : undefined,
+            lng: customer.lng ? Number(customer.lng) : undefined,
         } : undefined,
         rider: rider ? {
             id: String(rider.id),
@@ -80,9 +99,25 @@ function formatOrder(order, items = [], customer, rider) {
         } : undefined,
     };
 }
+async function createNotification(input) {
+    try {
+        if (!input.userId)
+            return;
+        await db_1.db.insert(db_1.notificationsTable).values({
+            userId: input.userId,
+            title: input.title,
+            message: input.message,
+            type: input.type ?? "system",
+            referenceType: input.referenceType,
+            referenceId: input.referenceId,
+        });
+    }
+    catch {
+    }
+}
 async function getOrderItemsMap(orderIds) {
     const itemRows = orderIds.length > 0
-        ? await db_1.db.select().from(db_1.orderItems).where((0, drizzle_orm_1.sql) `${db_1.orderItems.orderId} = ANY(${orderIds})`)
+        ? await db_1.db.select().from(db_1.orderItems).where((0, drizzle_orm_1.inArray)(db_1.orderItems.orderId, orderIds))
         : [];
     return itemRows.reduce((acc, item) => {
         const key = String(item.orderId);
@@ -91,15 +126,16 @@ async function getOrderItemsMap(orderIds) {
         return acc;
     }, {});
 }
-router.get("/orders", async (req, res) => {
+router.get("/orders", (0, async_handler_1.asyncHandler)(async (req, res) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;
     const offset = (page - 1) * limit;
     const { status, customerId, businessId } = req.query;
+    const normalizedStatus = typeof status === "string" ? normalizeIncomingStatus(status) : undefined;
     let query = db_1.db.select().from(db_1.ordersTable);
     const conditions = [];
-    if (status)
-        conditions.push((0, drizzle_orm_1.eq)(db_1.ordersTable.status, status));
+    if (normalizedStatus)
+        conditions.push((0, drizzle_orm_1.eq)(db_1.ordersTable.status, normalizedStatus));
     if (customerId)
         conditions.push((0, drizzle_orm_1.eq)(db_1.ordersTable.customerId, customerId));
     if (businessId)
@@ -112,7 +148,7 @@ router.get("/orders", async (req, res) => {
     const itemsByOrderId = await getOrderItemsMap(orderIds);
     const customerIds = [...new Set(orders.map((order) => order.customerId))];
     const customers = customerIds.length > 0
-        ? await db_1.db.select().from(db_1.users).where((0, drizzle_orm_1.sql) `${db_1.users.id} = ANY(${customerIds})`)
+        ? await db_1.db.select().from(db_1.users).where((0, drizzle_orm_1.inArray)(db_1.users.id, customerIds))
         : [];
     const customerMap = Object.fromEntries(customers.map((customer) => [customer.id, customer]));
     res.json({
@@ -121,8 +157,8 @@ router.get("/orders", async (req, res) => {
         page,
         limit,
     });
-});
-router.post("/orders", async (req, res) => {
+}));
+router.post("/orders", (0, async_handler_1.asyncHandler)(async (req, res) => {
     const { customerId, businessId, items, pickupDate, pickupSlot, addressId, paymentMethod, couponCode, isExpress, notes } = req.body;
     if (!customerId || !businessId || !Array.isArray(items) || items.length === 0 || !pickupDate || !pickupSlot || !paymentMethod) {
         res.status(400).json({ error: "Missing required fields" });
@@ -193,6 +229,18 @@ router.post("/orders", async (req, res) => {
             specialInstructions: item.specialInstructions ?? undefined,
         };
     }));
+    const [customer] = await db_1.db.select().from(db_1.users).where((0, drizzle_orm_1.eq)(db_1.users.id, String(customerId)));
+    const [business] = await db_1.db.select().from(db_1.businessesTable).where((0, drizzle_orm_1.eq)(db_1.businessesTable.id, String(businessId)));
+    if (business?.userId) {
+        await createNotification({
+            userId: String(business.userId),
+            title: "New order received",
+            message: `Order #${order.orderNumber} has been placed${customer?.name ? ` by ${customer.name}` : ""}.`,
+            type: "order",
+            referenceType: "order",
+            referenceId: String(order.id),
+        });
+    }
     res.status(201).json(formatOrder(order, items.map((item, index) => ({
         id: `new-${index}`,
         itemName: item.itemName ?? item.name,
@@ -203,8 +251,8 @@ router.post("/orders", async (req, res) => {
         totalPrice: Number(item.totalPrice ?? (Number(item.unitPrice ?? item.price ?? 0) * Number(item.quantity ?? 1))),
         isExpress: item.isExpress ?? Boolean(isExpress),
     }))));
-});
-router.get("/orders/:id", async (req, res) => {
+}));
+router.get("/orders/:id", (0, async_handler_1.asyncHandler)(async (req, res) => {
     const id = req.params.id;
     const [order] = await db_1.db.select().from(db_1.ordersTable).where((0, drizzle_orm_1.eq)(db_1.ordersTable.id, id));
     if (!order) {
@@ -217,19 +265,20 @@ router.get("/orders/:id", async (req, res) => {
         : [undefined];
     const items = await db_1.db.select().from(db_1.orderItems).where((0, drizzle_orm_1.eq)(db_1.orderItems.orderId, order.id));
     res.json(formatOrder(order, items.map(serializeOrderItem), customer, rider));
-});
-router.patch("/orders/:id", async (req, res) => {
+}));
+router.patch("/orders/:id", (0, async_handler_1.asyncHandler)(async (req, res) => {
     const id = req.params.id;
     const { status, notes, deliveryDate } = req.body;
+    const normalizedStatus = status ? normalizeIncomingStatus(String(status)) : undefined;
     const [existingOrder] = await db_1.db.select().from(db_1.ordersTable).where((0, drizzle_orm_1.eq)(db_1.ordersTable.id, id));
     if (!existingOrder) {
         res.status(404).json({ error: "Order not found" });
         return;
     }
     const updates = {};
-    if (status) {
-        updates.status = status;
-        Object.assign(updates, getStatusTimestampUpdate(status));
+    if (normalizedStatus) {
+        updates.status = normalizedStatus;
+        Object.assign(updates, getStatusTimestampUpdate(normalizedStatus));
     }
     if (notes != null)
         updates.customerNotes = notes;
@@ -237,19 +286,27 @@ router.patch("/orders/:id", async (req, res) => {
         updates.deliveryDate = deliveryDate;
     const updateResult = await db_1.db.update(db_1.ordersTable).set(updates).where((0, drizzle_orm_1.eq)(db_1.ordersTable.id, id)).returning();
     const order = updateResult[0];
-    if (status && status !== existingOrder.status) {
+    if (normalizedStatus && normalizedStatus !== existingOrder.status) {
         await db_1.db.insert(db_1.orderStatusHistory).values({
             orderId: order.id,
             fromStatus: existingOrder.status,
-            toStatus: status,
+            toStatus: normalizedStatus,
             notes: notes ?? undefined,
             changedByType: "business",
+        });
+        await createNotification({
+            userId: String(existingOrder.customerId),
+            title: "Order status updated",
+            message: `Your order #${existingOrder.orderNumber} is now ${normalizeOutgoingStatus(normalizedStatus).replace(/_/g, " ")}.`,
+            type: "status",
+            referenceType: "order",
+            referenceId: String(existingOrder.id),
         });
     }
     const items = await db_1.db.select().from(db_1.orderItems).where((0, drizzle_orm_1.eq)(db_1.orderItems.orderId, order.id));
     res.json(formatOrder(order, items.map(serializeOrderItem)));
-});
-router.post("/orders/:id/assign-rider", async (req, res) => {
+}));
+router.post("/orders/:id/assign-rider", (0, async_handler_1.asyncHandler)(async (req, res) => {
     const id = req.params.id;
     const { riderId } = req.body;
     const updateResult = await db_1.db.update(db_1.ordersTable).set({ riderId }).where((0, drizzle_orm_1.eq)(db_1.ordersTable.id, id)).returning();
@@ -261,6 +318,6 @@ router.post("/orders/:id/assign-rider", async (req, res) => {
     const [rider] = await db_1.db.select().from(db_1.ridersTable).where((0, drizzle_orm_1.eq)(db_1.ridersTable.id, riderId));
     const items = await db_1.db.select().from(db_1.orderItems).where((0, drizzle_orm_1.eq)(db_1.orderItems.orderId, order.id));
     res.json(formatOrder(order, items.map(serializeOrderItem), undefined, rider));
-});
+}));
 exports.default = router;
 //# sourceMappingURL=orders.js.map

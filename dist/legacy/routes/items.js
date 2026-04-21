@@ -4,6 +4,14 @@ const express_1 = require("express");
 const db_1 = require("../db");
 const drizzle_orm_1 = require("drizzle-orm");
 const router = (0, express_1.Router)();
+function asUuid(value) {
+    if (typeof value !== "string")
+        return undefined;
+    const trimmed = value.trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)
+        ? trimmed
+        : undefined;
+}
 function formatItem(item) {
     return {
         id: String(item.id),
@@ -22,10 +30,12 @@ router.get("/items", async (req, res) => {
     const { category, businessId } = req.query;
     let query = db_1.db.select().from(db_1.itemsTable);
     const conditions = [];
-    if (category)
-        conditions.push((0, drizzle_orm_1.eq)(db_1.itemsTable.categoryId, category));
-    if (businessId)
-        conditions.push((0, drizzle_orm_1.eq)(db_1.itemsTable.businessId, businessId));
+    const categoryId = asUuid(category);
+    const ownerBusinessId = asUuid(businessId);
+    if (categoryId)
+        conditions.push((0, drizzle_orm_1.eq)(db_1.itemsTable.categoryId, categoryId));
+    if (ownerBusinessId)
+        conditions.push((0, drizzle_orm_1.eq)(db_1.itemsTable.businessId, ownerBusinessId));
     if (conditions.length > 0)
         query = query.where((0, drizzle_orm_1.and)(...conditions));
     const items = await query;
@@ -33,20 +43,21 @@ router.get("/items", async (req, res) => {
 });
 router.post("/items", async (req, res) => {
     const { name, category, priceWash, priceDryClean, priceIron, expressPriceWash, expressPriceDryClean, expressPriceIron, businessId } = req.body;
-    if (!name || !category || !businessId) {
+    const ownerBusinessId = asUuid(businessId);
+    if (!name || !category || !ownerBusinessId) {
         res.status(400).json({ error: "Missing required fields" });
         return;
     }
     const insertResult = await db_1.db.insert(db_1.itemsTable).values({
         name,
-        categoryId: category,
+        categoryId: asUuid(category),
         priceWash: priceWash ? String(priceWash) : undefined,
         priceDryClean: priceDryClean ? String(priceDryClean) : undefined,
         priceIron: priceIron ? String(priceIron) : undefined,
         expressPriceWash: expressPriceWash ? String(expressPriceWash) : undefined,
         expressPriceDryClean: expressPriceDryClean ? String(expressPriceDryClean) : undefined,
         expressPriceIron: expressPriceIron ? String(expressPriceIron) : undefined,
-        businessId,
+        businessId: ownerBusinessId,
     }).returning();
     const item = insertResult[0];
     res.status(201).json(formatItem(item));
