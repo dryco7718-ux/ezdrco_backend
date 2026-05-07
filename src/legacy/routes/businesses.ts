@@ -92,6 +92,13 @@ router.post("/businesses", async (req, res): Promise<void> => {
     return;
   }
 
+  // Check if user already has a business
+  const [existingBusiness] = await db.select().from(businessesTable).where(eq(businessesTable.userId, String(userId)));
+  if (existingBusiness) {
+    res.status(409).json({ error: "User already has a business registered" });
+    return;
+  }
+
   const insertResult = await db.insert(businessesTable).values({
     userId: String(userId),
     shopName,
