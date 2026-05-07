@@ -47,23 +47,15 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
-  // Enable CORS - Hardcoded production origins (env-independent)
-  const allowedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:3000',
-    'https://www.ezdry.in',
-    'https://ezdry.in',
-  ];
-  
+  // Enable CORS - Allow all origins (temporary fix to test deployment)
   app.enableCors({
-    origin: allowedOrigins,
+    origin: true,
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type, Accept, Authorization',
+    allowedHeaders: '*',
   });
   
-  console.log('🔒 CORS CONFIG APPLIED:', allowedOrigins);
+  console.log('🔒 CORS: Allow all origins (TEMPORARY)');
 
   // Cookie parser
   app.use(express.json());
