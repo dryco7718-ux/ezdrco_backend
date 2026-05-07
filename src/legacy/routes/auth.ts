@@ -46,7 +46,7 @@ router.post("/auth/verify-otp", async (req, res): Promise<void> => {
     const insertResult = await db.insert(users).values({
       name: `User ${phone.slice(-4)}`,
       phone,
-      passwordHash: hashPassword(`washify-${phone}`),
+      passwordHash: hashPassword(`ezdry-${phone}`),
       role: "customer",
       isVerified: true,
     }).returning();

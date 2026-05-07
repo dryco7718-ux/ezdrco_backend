@@ -47,9 +47,14 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
-  // Enable CORS - Production-safe config
-  const corsOrigins = configService.get<string>('CORS_ORIGINS') || 'http://localhost:5173';
-  const allowedOrigins = corsOrigins.split(',').map(origin => origin.trim());
+  // Enable CORS - Hardcoded production origins (env-independent)
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:3000',
+    'https://www.ezdry.in',
+    'https://ezdry.in',
+  ];
   
   app.enableCors({
     origin: allowedOrigins,
