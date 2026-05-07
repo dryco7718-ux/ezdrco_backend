@@ -47,14 +47,18 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
-  // Enable CORS
+  // Enable CORS - Production-safe config
   const corsOrigins = configService.get<string>('CORS_ORIGINS') || 'http://localhost:5173';
+  const allowedOrigins = corsOrigins.split(',').map(origin => origin.trim());
+  
   app.enableCors({
-    origin: corsOrigins.split(',').map(origin => origin.trim()),
+    origin: allowedOrigins,
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Accept, Authorization',
   });
+  
+  console.log('🔒 CORS CONFIG APPLIED:', allowedOrigins);
 
   // Cookie parser
   app.use(express.json());
